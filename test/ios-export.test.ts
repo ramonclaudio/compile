@@ -189,7 +189,6 @@ void test(
     assert.equal(result.status, "exited");
     assert.equal(result.exitCode, 1, result.stderr);
     assert.equal(result.stdout, "");
-    assert.match(result.stderr, /BUILD SUCCEEDED/);
     assert.match(result.stderr, /without a usable executable/);
     assert.deepEqual(await readdir(output), ["marker"]);
   },
@@ -205,9 +204,10 @@ void test(
     const result = await runCli(directory, ["ios", "--dev", "--output-dir", "output"]);
     assert.equal(result.status, "exited");
     assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(result.stderr, "");
     assert.equal(
       result.stdout,
-      `Output: ${path.join(await realpath(directory), "output", "CompilePrototype.app")}\n`,
+      `${path.join(await realpath(directory), "output", "CompilePrototype.app")}\n`,
     );
     assert.ok(
       (await readdir(path.join(directory, "build", "Debug-watchsimulator"))).includes("Watch.app"),

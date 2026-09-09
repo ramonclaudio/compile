@@ -43,7 +43,6 @@ void test(
     await assert.rejects(readFile(reportPath), { code: "ENOENT" });
 
     const first = await compileApks(project, path.join(root, "first"));
-    assert.doesNotMatch(first.output, /Configuration cache entry reused/);
     const source = path.join(
       project,
       "app",
@@ -68,12 +67,11 @@ void test(
     );
 
     const second = await compileApks(project, path.join(root, "second"));
-    assert.match(second.output, /Configuration cache entry reused/);
-    assert.equal(second.hashes.length, first.hashes.length);
-    for (const [index, hash] of second.hashes.entries()) {
+    assert.equal(second.length, first.length);
+    for (const [index, hash] of second.entries()) {
       assert.notEqual(
         hash,
-        first.hashes[index],
+        first[index],
         "Compile returned an APK from before the Java source changed.",
       );
     }
@@ -94,7 +92,7 @@ void test(
           .digest("hex");
       }),
     );
-    assert.deepEqual(warmHashes.sort(), [...second.hashes].sort());
+    assert.deepEqual(warmHashes.sort(), [...second].sort());
 
     await writeFile(
       source,
@@ -104,11 +102,10 @@ void test(
       ),
     );
     const final = await compileApks(project, path.join(root, "final"));
-    assert.match(final.output, /Configuration cache entry reused/);
-    for (const [index, hash] of final.hashes.entries()) {
+    for (const [index, hash] of final.entries()) {
       assert.notEqual(
         hash,
-        second.hashes[index],
+        second[index],
         "The warm configure-on-demand invocation left a stale task graph.",
       );
     }
@@ -217,10 +214,7 @@ async function runInferredReportWithConfigureOnDemand(cwd: string, reportPath: s
   });
 }
 
-async function compileApks(
-  cwd: string,
-  outputDir: string,
-): Promise<{ readonly hashes: readonly string[]; readonly output: string }> {
+async function compileApks(cwd: string, outputDir: string): Promise<readonly string[]> {
   const result = await runProcess(
     process.execPath,
     [cli, "android", "--dev", "--output-dir", outputDir],
@@ -233,17 +227,18 @@ async function compileApks(
   );
   assert.equal(result.status, "exited");
   assert.equal(result.exitCode, 0, result.stderr);
-  const lines = result.stdout.trim().split("\n");
+  assert.equal(result.stderr, "");
+  assert.ok(result.stdout.endsWith("\n"), result.stdout);
+  const lines = result.stdout.slice(0, -1).split("\n");
   assert.equal(lines.length, 3);
   const hashes: string[] = [];
-  for (const line of lines) {
-    assert.ok(line.startsWith("Output: "), line);
-    const artifact = line.slice("Output: ".length);
+  for (const artifact of lines) {
+    assert.ok(path.isAbsolute(artifact), artifact);
     assert.equal(path.dirname(artifact), outputDir);
     assert.equal(path.extname(artifact), ".apk");
     const bytes = await readFile(artifact);
     assert.equal(bytes.readUInt32LE(0), 0x04034b50, "APK is missing its ZIP header.");
     hashes.push(createHash("sha256").update(bytes).digest("hex"));
   }
-  return { hashes, output: result.stdout + result.stderr };
+  return hashes;
 }

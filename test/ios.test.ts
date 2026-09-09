@@ -309,8 +309,9 @@ void test("builds the UIKit project and copies its app", { skip: !isMacOS }, asy
 
   assert.equal(processResult.status, "exited");
   assert.equal(processResult.exitCode, 0, processResult.stderr);
+  assert.equal(processResult.stderr, "");
   const appPath = path.join(outputDir, "CompilePrototype.app");
-  assert.equal(processResult.stdout, `Output: ${appPath}\n`);
+  assert.equal(processResult.stdout, `${appPath}\n`);
   await access(appPath);
 });
 
@@ -327,10 +328,12 @@ void test("builds the UIKit workspace in production mode", { skip: !isMacOS }, a
 
   assert.equal(processResult.status, "exited");
   assert.equal(processResult.exitCode, 0, processResult.stderr);
-  const outputMatch = /^Output: (.+\.app)\n$/.exec(processResult.stdout);
+  assert.equal(processResult.stderr, "");
+  const outputMatch = /^(.+\.app)\n$/.exec(processResult.stdout);
   assert.ok(outputMatch);
   const appPath = outputMatch[1];
   assert.ok(appPath);
+  assert.ok(path.isAbsolute(appPath), appPath);
   assert.match(appPath, /Release-iphonesimulator/);
   await access(appPath);
 });

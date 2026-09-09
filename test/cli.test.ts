@@ -125,7 +125,7 @@ void test("CLI rejects ambiguous wrappers before invoking either one", async (co
   assert.match(result.stderr, /Found more than one gradlew/);
 });
 
-void test("CLI prints every reported artifact and keeps build output on stderr", async (context) => {
+void test("CLI prints only artifact paths after a successful build", async (context) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "compile-cli-output-"));
   context.after(() => rm(directory, { recursive: true, force: true }));
   const firstArtifact = path.join(directory, "first app.apk");
@@ -145,10 +145,8 @@ void test("CLI prints every reported artifact and keeps build output on stderr",
   const result = await runCli(["android", "--dev"], directory);
   assert.equal(result.status, "exited");
   assert.equal(result.exitCode, 0, result.stderr);
-  assert.equal(result.stdout, `Output: ${firstArtifact}\nOutput: ${secondArtifact}\n`);
-  assert.match(result.stderr, /native stdout/);
-  assert.match(result.stderr, /native stderr/);
-  assert.doesNotMatch(result.stderr, /Output: /);
+  assert.equal(result.stdout, `${firstArtifact}\n${secondArtifact}\n`);
+  assert.equal(result.stderr, "");
 });
 
 void test("CLI preserves a native failure's exit code and output", async (context) => {
@@ -167,9 +165,10 @@ void test("CLI preserves a native failure's exit code and output", async (contex
   assert.equal(result.status, "exited");
   assert.equal(result.exitCode, 23, result.stderr);
   assert.equal(result.stdout, "");
-  assert.match(result.stderr, /native stdout/);
-  assert.match(result.stderr, /native stderr\ncompile: /);
-  assert.match(result.stderr, /compile: Gradle failed with exit code 23:\nnative stderr/);
+  assert.equal(
+    result.stderr,
+    "compile: Gradle failed with exit code 23:\nnative stdout\nnative stderr\n",
+  );
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -189,6 +188,33 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     },
   );
 }
+
+void test(
+  "CLI preserves native diagnostics when a build is terminated",
+  { skip: process.platform === "win32" },
+  async (context) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "compile-cli-signal-output-"));
+    context.after(() => rm(directory, { recursive: true, force: true }));
+    await writeGradleFixture(
+      directory,
+      [
+        'import { writeSync } from "node:fs";',
+        'writeSync(1, "native stdout\\n");',
+        'writeSync(2, "native stderr\\n");',
+        'process.kill(process.pid, "SIGTERM");',
+      ].join("\n"),
+    );
+
+    const result = await runCli(["android", "--dev"], directory);
+    assert.equal(result.status, "signaled");
+    assert.equal(result.signal, "SIGTERM");
+    assert.equal(result.stdout, "");
+    assert.equal(
+      result.stderr,
+      "compile: Gradle stopped after receiving SIGTERM:\nnative stdout\nnative stderr\n",
+    );
+  },
+);
 
 void test(
   "prints a stack for an unexpected CLI error",

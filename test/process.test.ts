@@ -202,89 +202,100 @@ void test("captures output from a descendant after the process leader exits", as
   assert.deepEqual(result, { status: "exited", exitCode: 0, stdout: "headtail", stderr: "" });
 });
 
-void test("forwards large native output without using stdout", async () => {
-  const outputSize = 256 * 1_024;
-  const childScript = `process.stdout.write("o".repeat(${outputSize})); process.stderr.write("e".repeat(${outputSize}))`;
-  const processModuleUrl = new URL("../dist/process.js", import.meta.url).href;
-  const parentScript = [
-    `import { runProcess } from ${JSON.stringify(processModuleUrl)};`,
-    `const result = await runProcess(process.execPath, ["-e", ${JSON.stringify(childScript)}], { cwd: process.cwd(), env: undefined, outputMode: "stderr", signal: undefined });`,
-    "process.stdout.write(JSON.stringify(result));",
-  ].join("");
-  const processResult = await runProcess(
-    process.execPath,
-    ["--input-type=module", "-e", parentScript],
-    captureOptions,
-  );
+for (const outputMode of ["stderr", "quiet"] as const) {
+  void test(`keeps native output off stdout in ${outputMode} mode`, async () => {
+    const outputSize = 256 * 1_024;
+    const childScript = `process.stdout.write("o".repeat(${outputSize})); process.stderr.write("e".repeat(${outputSize}))`;
+    const processModuleUrl = new URL("../dist/process.js", import.meta.url).href;
+    const parentScript = [
+      `import { runProcess } from ${JSON.stringify(processModuleUrl)};`,
+      `const result = await runProcess(process.execPath, ["-e", ${JSON.stringify(childScript)}], { cwd: process.cwd(), env: undefined, outputMode: ${JSON.stringify(outputMode)}, signal: undefined });`,
+      "process.stdout.write(JSON.stringify(result));",
+    ].join("");
+    const processResult = await runProcess(
+      process.execPath,
+      ["--input-type=module", "-e", parentScript],
+      captureOptions,
+    );
 
-  assert.equal(processResult.status, "exited");
-  assert.equal(processResult.exitCode, 0, processResult.stderr);
-  assert.ok(processResult.stderr.endsWith("\n"));
-  const forwarded = processResult.stderr.slice(0, -1);
-  assert.equal(forwarded.length, outputSize * 2);
-  assert.equal(forwarded.replaceAll("o", "").length, outputSize);
-  assert.equal(forwarded.replaceAll("e", "").length, outputSize);
-  assert.deepEqual(JSON.parse(processResult.stdout), {
-    status: "exited",
-    exitCode: 0,
-    stdout: "o".repeat(16 * 1_024),
-    stderr: "e".repeat(16 * 1_024),
+    assert.equal(processResult.status, "exited");
+    assert.equal(processResult.exitCode, 0, processResult.stderr);
+    if (outputMode === "stderr") {
+      assert.ok(processResult.stderr.endsWith("\n"));
+      const forwarded = processResult.stderr.slice(0, -1);
+      assert.equal(forwarded.length, outputSize * 2);
+      assert.equal(forwarded.replaceAll("o", "").length, outputSize);
+      assert.equal(forwarded.replaceAll("e", "").length, outputSize);
+    } else {
+      assert.equal(processResult.stderr, "");
+    }
+    assert.deepEqual(JSON.parse(processResult.stdout), {
+      status: "exited",
+      exitCode: 0,
+      stdout: "o".repeat(16 * 1_024),
+      stderr: "e".repeat(16 * 1_024),
+    });
   });
-});
+}
 
-void test("keeps only the last thirty streamed lines in a failure diagnostic", async () => {
-  const lines = Array.from({ length: 100 }, (_, index) => `native line ${index}`).join("\n") + "\n";
-  const childScript = `process.stderr.write(${JSON.stringify(lines)}); process.exitCode = 65`;
-  const processModuleUrl = new URL("../dist/process.js", import.meta.url).href;
-  const script = [
-    `import { runCheckedProcess } from ${JSON.stringify(processModuleUrl)};`,
-    "try {",
-    `await runCheckedProcess(process.execPath, ["-e", ${JSON.stringify(childScript)}], { cwd: process.cwd(), env: undefined, outputMode: "stderr", signal: undefined }, "Native build");`,
-    "} catch (error) { process.stdout.write(JSON.stringify({ message: error.message, exitCode: error.exitCode })); }",
-  ].join("\n");
-  const result = await runProcess(
-    process.execPath,
-    ["--input-type=module", "-e", script],
-    captureOptions,
-  );
-  assert.equal(result.status, "exited");
-  assert.equal(result.stderr, lines);
-  assert.deepEqual(JSON.parse(result.stdout), {
-    exitCode: 65,
-    message: `Native build failed with exit code 65:\n${lines.trimEnd().split("\n").slice(-30).join("\n")}`,
+for (const outputMode of ["stderr", "quiet"] as const) {
+  void test(`bounds failure diagnostic lines in ${outputMode} mode`, async () => {
+    const lines =
+      Array.from({ length: 100 }, (_, index) => `native line ${index}`).join("\n") + "\n";
+    const childScript = `process.stderr.write(${JSON.stringify(lines)}); process.exitCode = 65`;
+    const processModuleUrl = new URL("../dist/process.js", import.meta.url).href;
+    const script = [
+      `import { runCheckedProcess } from ${JSON.stringify(processModuleUrl)};`,
+      "try {",
+      `await runCheckedProcess(process.execPath, ["-e", ${JSON.stringify(childScript)}], { cwd: process.cwd(), env: undefined, outputMode: ${JSON.stringify(outputMode)}, signal: undefined }, "Native build");`,
+      "} catch (error) { process.stdout.write(JSON.stringify({ message: error.message, exitCode: error.exitCode })); }",
+    ].join("\n");
+    const result = await runProcess(
+      process.execPath,
+      ["--input-type=module", "-e", script],
+      captureOptions,
+    );
+    assert.equal(result.status, "exited");
+    assert.equal(result.stderr, outputMode === "stderr" ? lines : "");
+    assert.deepEqual(JSON.parse(result.stdout), {
+      exitCode: 65,
+      message: `Native build failed with exit code 65:\n${lines.trimEnd().split("\n").slice(-30).join("\n")}`,
+    });
   });
-});
+}
 
-void test("bounds a streamed diagnostic with a long UTF-8 line and no final newline", async () => {
-  const output = "😀".repeat(10_000) + "final native diagnostic";
-  const childScript =
-    'process.stdout.write("😀".repeat(10_000) + "final native diagnostic"); process.exitCode = 23';
-  const processModuleUrl = new URL("../dist/process.js", import.meta.url).href;
-  const script = [
-    `import { runCheckedProcess } from ${JSON.stringify(processModuleUrl)};`,
-    "try {",
-    `await runCheckedProcess(process.execPath, ["-e", ${JSON.stringify(childScript)}], { cwd: process.cwd(), env: undefined, outputMode: "stderr", signal: undefined }, "Native build");`,
-    "} catch (error) { process.stdout.write(JSON.stringify({ message: error.message, exitCode: error.exitCode })); }",
-  ].join("\n");
-  const result = await runProcess(
-    process.execPath,
-    ["--input-type=module", "-e", script],
-    captureOptions,
-  );
-  assert.equal(result.status, "exited");
-  assert.equal(result.stderr, `${output}\n`);
-  const failure: unknown = JSON.parse(result.stdout);
-  assert.ok(isRecord(failure));
-  assert.equal(failure.exitCode, 23);
-  assert.ok(typeof failure.message === "string");
-  const prefix = "Native build failed with exit code 23:\n";
-  assert.ok(failure.message.startsWith(prefix));
-  const tail = failure.message.slice(prefix.length);
-  assert.ok(Buffer.byteLength(tail) <= 16 * 1_024);
-  assert.ok(tail.endsWith("final native diagnostic"));
-  assert.ok(!tail.includes("\uFFFD"));
-  assert.ok(tail.startsWith("😀"));
-});
+for (const outputMode of ["stderr", "quiet"] as const) {
+  void test(`bounds long UTF-8 diagnostics in ${outputMode} mode`, async () => {
+    const output = "😀".repeat(10_000) + "final native diagnostic";
+    const childScript =
+      'process.stdout.write("😀".repeat(10_000) + "final native diagnostic"); process.exitCode = 23';
+    const processModuleUrl = new URL("../dist/process.js", import.meta.url).href;
+    const script = [
+      `import { runCheckedProcess } from ${JSON.stringify(processModuleUrl)};`,
+      "try {",
+      `await runCheckedProcess(process.execPath, ["-e", ${JSON.stringify(childScript)}], { cwd: process.cwd(), env: undefined, outputMode: ${JSON.stringify(outputMode)}, signal: undefined }, "Native build");`,
+      "} catch (error) { process.stdout.write(JSON.stringify({ message: error.message, exitCode: error.exitCode })); }",
+    ].join("\n");
+    const result = await runProcess(
+      process.execPath,
+      ["--input-type=module", "-e", script],
+      captureOptions,
+    );
+    assert.equal(result.status, "exited");
+    assert.equal(result.stderr, outputMode === "stderr" ? `${output}\n` : "");
+    const failure: unknown = JSON.parse(result.stdout);
+    assert.ok(isRecord(failure));
+    assert.equal(failure.exitCode, 23);
+    assert.ok(typeof failure.message === "string");
+    const prefix = "Native build failed with exit code 23:\n";
+    assert.ok(failure.message.startsWith(prefix));
+    const tail = failure.message.slice(prefix.length);
+    assert.ok(Buffer.byteLength(tail) <= 16 * 1_024);
+    assert.ok(tail.endsWith("final native diagnostic"));
+    assert.ok(!tail.includes("\uFFFD"));
+    assert.ok(tail.startsWith("😀"));
+  });
+}
 
 void test("terminates only unfinished streamed output across both native pipes", async () => {
   for (const [stdout, stderr] of [

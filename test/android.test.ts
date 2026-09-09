@@ -235,6 +235,7 @@ void test(
     );
     assert.equal(apkResult.status, "exited");
     assert.equal(apkResult.exitCode, 0, apkResult.stderr);
+    assert.equal(apkResult.stderr, "");
     const apkPaths = readOutputPaths(apkResult.stdout);
     assert.equal(apkPaths.length, 3);
     for (const apkPath of apkPaths) {
@@ -250,7 +251,8 @@ void test(
     );
     assert.equal(cachedApkResult.status, "exited");
     assert.equal(cachedApkResult.exitCode, 0, cachedApkResult.stderr);
-    assert.match(cachedApkResult.stderr, /Configuration cache entry reused/);
+    assert.equal(cachedApkResult.stderr, "");
+    assert.deepEqual(readOutputPaths(cachedApkResult.stdout), apkPaths);
 
     const productionApkResult = await runCli(
       ["android", "--prod", "--output-dir", outputDir],
@@ -258,6 +260,7 @@ void test(
     );
     assert.equal(productionApkResult.status, "exited");
     assert.equal(productionApkResult.exitCode, 0, productionApkResult.stderr);
+    assert.equal(productionApkResult.stderr, "");
     const productionApkPaths = readOutputPaths(productionApkResult.stdout);
     assert.equal(productionApkPaths.length, 3);
     for (const apkPath of productionApkPaths) {
@@ -271,6 +274,7 @@ void test(
     );
     assert.equal(developmentAabResult.status, "exited");
     assert.equal(developmentAabResult.exitCode, 0, developmentAabResult.stderr);
+    assert.equal(developmentAabResult.stderr, "");
     const developmentAabPaths = readOutputPaths(developmentAabResult.stdout);
     assert.equal(developmentAabPaths.length, 1);
     const [developmentAabPath] = developmentAabPaths;
@@ -284,6 +288,7 @@ void test(
     );
     assert.equal(aabResult.status, "exited");
     assert.equal(aabResult.exitCode, 0, aabResult.stderr);
+    assert.equal(aabResult.stderr, "");
     const aabPaths = readOutputPaths(aabResult.stdout);
     assert.equal(aabPaths.length, 1);
     const [aabPath] = aabPaths;
@@ -321,13 +326,12 @@ function runCli(args: readonly string[], cwd: string) {
 }
 
 function readOutputPaths(output: string): readonly string[] {
-  return output
-    .trim()
-    .split("\n")
-    .map((line) => {
-      assert.ok(line.startsWith("Output: "), line);
-      return line.slice("Output: ".length);
-    });
+  assert.ok(output.endsWith("\n"), output);
+  const paths = output.slice(0, -1).split("\n");
+  for (const outputPath of paths) {
+    assert.ok(path.isAbsolute(outputPath), outputPath);
+  }
+  return paths;
 }
 
 for (const [mode, variant, debuggable] of [
@@ -350,6 +354,7 @@ android.buildTypes.configureEach { debuggable = ${debuggable} }
       const result = await runCli(["android", mode], root);
       assert.equal(result.status, "exited");
       assert.equal(result.exitCode, 0, result.stderr);
+      assert.equal(result.stderr, "");
       const artifacts = readOutputPaths(result.stdout);
       assert.equal(artifacts.length, 3);
       for (const artifact of artifacts) {
