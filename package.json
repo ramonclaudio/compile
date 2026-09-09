@@ -1,9 +1,12 @@
 {
   "name": "@ramonclaudio/compile",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.0-beta.1",
   "description": "Compile native iOS and Android projects.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ramonclaudio/compile.git"
+  },
   "bin": {
     "compile": "dist/cli.js"
   },
@@ -20,6 +23,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "beta"
   },
   "scripts": {
     "clean": "node -e \"for (const directory of ['dist', '.build', 'fixtures/android-java/.gradle', 'fixtures/android-java/build', 'fixtures/android-java/app/build', 'fixtures/android-java/out', 'fixtures/ios-uikit/build', 'fixtures/ios-uikit/out', 'fixtures/ios-watch/build', 'fixtures/ios-watch/out']) require('node:fs').rmSync(directory, { recursive: true, force: true })\"",
