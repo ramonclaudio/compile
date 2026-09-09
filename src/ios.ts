@@ -9,7 +9,7 @@ import {
 } from "./artifacts.ts";
 import { exportIpa, readExportOptions } from "./ios-export.ts";
 import { createBuildEnvironment, runCheckedProcess } from "./process.ts";
-import type { NativeBuildOptions } from "./process.ts";
+import type { NativeBuildOptions, RunProcessOptions } from "./process.ts";
 import { CompileError } from "./types.ts";
 import type { IosBuildPlatform, IosCompileRequest, IosDestination, IosSource } from "./types.ts";
 import { isMissingPathError, isRecord, isStringArray } from "./validation.ts";
@@ -141,7 +141,7 @@ async function executeIosBuild(
   await runXcode(
     [...buildArgs, ...(request.clean ? ["clean"] : []), "build"],
     cwd,
-    "stderr",
+    options.outputMode ?? "stderr",
     options,
   );
   await verifyAppPaths(appPaths);
@@ -641,7 +641,7 @@ async function pathExists(filePath: string): Promise<boolean> {
 async function runXcode(
   args: readonly string[],
   cwd: string,
-  outputMode: "capture" | "stderr",
+  outputMode: RunProcessOptions["outputMode"],
   options: NativeBuildOptions,
 ): Promise<string> {
   return runCheckedProcess(

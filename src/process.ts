@@ -20,10 +20,12 @@ export type ProcessResult =
       readonly stderr: string;
     };
 
+export type BuildOutputMode = "stderr" | "quiet";
+
 export interface RunProcessOptions {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv | undefined;
-  readonly outputMode: "capture" | "stderr";
+  readonly outputMode: "capture" | BuildOutputMode;
   readonly signal: AbortSignal | undefined;
 }
 
@@ -34,6 +36,7 @@ export type ProcessRunner = (
 ) => Promise<ProcessResult>;
 
 export interface NativeBuildOptions {
+  readonly outputMode?: BuildOutputMode | undefined;
   readonly env?: NodeJS.ProcessEnv | undefined;
   readonly signal?: AbortSignal | undefined;
   readonly runProcess?: ProcessRunner | undefined;
@@ -79,8 +82,8 @@ export async function runProcess(
   const stderrChunks: Buffer[] = [];
   const streamedOutput: StreamedOutput | undefined =
     options.outputMode === "stderr" ? { lastByte: undefined } : undefined;
-  readOutput(childProcess.stdout, stdoutChunks, streamedOutput);
-  readOutput(childProcess.stderr, stderrChunks, streamedOutput);
+  readOutput(childProcess.stdout, stdoutChunks, options.outputMode, streamedOutput);
+  readOutput(childProcess.stderr, stderrChunks, options.outputMode, streamedOutput);
   try {
     return await waitForClose(childProcess, command, stdoutChunks, stderrChunks, options.signal);
   } finally {
@@ -98,34 +101,47 @@ export async function runCheckedProcess(
   runner: ProcessRunner = runProcess,
 ): Promise<string> {
   const processResult = await runner(command, args, options);
-  if (processResult.status === "signaled") {
-    throw new CompileError(`${operation} stopped after receiving ${processResult.signal}.`, {
-      signal: processResult.signal,
-    });
+  if (processResult.status === "exited" && processResult.exitCode === 0) {
+    return processResult.stdout;
   }
-  if (processResult.exitCode !== 0) {
-    const errorOutput = processResult.stderr.trim() || processResult.stdout.trim();
-    const failure = `${operation} failed with exit code ${processResult.exitCode}`;
-    const errorMessage = errorOutput.length > 0 ? `${failure}:\n${errorOutput}` : `${failure}.`;
-    throw new CompileError(errorMessage, { exitCode: processResult.exitCode });
+  const failure =
+    processResult.status === "signaled"
+      ? `${operation} stopped after receiving ${processResult.signal}`
+      : `${operation} failed with exit code ${processResult.exitCode}`;
+  let errorOutput = "";
+  if (options.outputMode === "quiet") {
+    errorOutput = [processResult.stdout.trim(), processResult.stderr.trim()]
+      .filter(Boolean)
+      .join("\n");
+  } else if (processResult.status === "exited") {
+    errorOutput = processResult.stderr.trim() || processResult.stdout.trim();
   }
-  return processResult.stdout;
+  const errorMessage = errorOutput.length > 0 ? `${failure}:\n${errorOutput}` : `${failure}.`;
+  throw new CompileError(
+    errorMessage,
+    processResult.status === "signaled"
+      ? { signal: processResult.signal }
+      : { exitCode: processResult.exitCode },
+  );
 }
 
 function readOutput(
   stream: Readable,
   outputChunks: Buffer[],
+  outputMode: RunProcessOptions["outputMode"],
   streamedOutput: StreamedOutput | undefined,
 ): void {
-  if (streamedOutput !== undefined) {
-    stream.pipe(process.stderr, { end: false });
-    stream.on("data", (chunk: Buffer) => {
-      if (chunk.length > 0) streamedOutput.lastByte = chunk[chunk.length - 1];
-      appendOutputTail(outputChunks, chunk);
-    });
+  if (outputMode === "capture") {
+    stream.on("data", (chunk: Buffer) => outputChunks.push(chunk));
     return;
   }
-  stream.on("data", (chunk: Buffer) => outputChunks.push(chunk));
+  if (streamedOutput !== undefined) stream.pipe(process.stderr, { end: false });
+  stream.on("data", (chunk: Buffer) => {
+    if (streamedOutput !== undefined && chunk.length > 0) {
+      streamedOutput.lastByte = chunk[chunk.length - 1];
+    }
+    appendOutputTail(outputChunks, chunk);
+  });
 }
 
 function appendOutputTail(outputChunks: Buffer[], chunk: Buffer): void {

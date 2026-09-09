@@ -17,10 +17,10 @@ async function main(): Promise<void> {
       throw new CompileError("Compiling iOS apps requires macOS and Xcode.");
     }
     const outputPaths = await (request.platform === "ios"
-      ? compileIos(request)
-      : compileAndroid(request));
+      ? compileIos(request, { outputMode: "quiet" })
+      : compileAndroid(request, { outputMode: "quiet" }));
     for (const outputPath of outputPaths) {
-      console.log(`Output: ${outputPath}`);
+      console.log(outputPath);
     }
   } catch (error) {
     handleError(error);

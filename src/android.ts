@@ -266,7 +266,7 @@ async function runGradle(
         ...(options.env ?? process.env),
         COMPILE_ANDROID_REPORT: reportPath,
       },
-      outputMode: "stderr",
+      outputMode: options.outputMode ?? "stderr",
       signal: options.signal,
     },
     "Gradle",

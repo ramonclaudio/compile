@@ -27,7 +27,7 @@ export async function exportIpa(
   const processOptions = {
     cwd: request.cwd,
     env: options.env,
-    outputMode: "stderr",
+    outputMode: options.outputMode ?? "stderr",
     signal: options.signal,
   } as const;
 
