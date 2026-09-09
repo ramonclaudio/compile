@@ -136,7 +136,7 @@ gradle.beforeProject { project ->
         variant: variant,
       ]
       applicationVariants.add(candidate)
-      if (request.mode == null && variant.name == variantName) configureReport(candidate)
+      if (request.mode == null && variant.name.equalsIgnoreCase(variantName)) configureReport(candidate)
     }
   }
 }
@@ -151,13 +151,19 @@ gradle.projectsEvaluated {
   def conventionalName = request.mode == "development" ? "debug" : "release"
   def selectedVariants = applicationVariants.findAll {
     request.mode == null
-      ? it.project.path == modulePath && it.variant.name == variantName
+      ? it.project.path == modulePath && it.variant.name.equalsIgnoreCase(variantName)
       : it.variant.name.equalsIgnoreCase(conventionalName)
   }
   if (selectedVariants.size() != 1) {
     if (request.mode == null) {
+      if (selectedVariants.isEmpty()) {
+        throw new GradleException(
+          "Compile found no Android application variant ${variantName} in module ${modulePath}.",
+        )
+      }
+      def names = selectedVariants.collect { it.path }.join(", ")
       throw new GradleException(
-        "Compile found no Android application variant ${variantName} in module ${modulePath}.",
+        "Compile found ${selectedVariants.size()} Android application variants matching ${variantName} in module ${modulePath}: ${names}",
       )
     }
     if (selectedVariants.isEmpty()) {
