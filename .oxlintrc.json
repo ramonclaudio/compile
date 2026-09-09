@@ -1,0 +1,100 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import", "node", "promise"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "options": {
+    "typeAware": true,
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "error"
+  },
+  "ignorePatterns": ["node_modules/**", "dist/**", ".build/**", ".dev/**", "fixtures/**"],
+  "rules": {
+    "complexity": [
+      "error",
+      {
+        "max": 10,
+        "variant": "classic"
+      }
+    ],
+    "no-await-in-loop": "off",
+    "unicorn/no-array-sort": "off",
+    "prefer-const": [
+      "error",
+      {
+        "ignoreReadBeforeAssign": true
+      }
+    ],
+    "eqeqeq": "error",
+    "no-var": "error",
+    "array-callback-return": "error",
+    "no-case-declarations": "error",
+    "no-fallthrough": "error",
+    "no-loop-func": "error",
+    "no-new-wrappers": "error",
+    "no-promise-executor-return": "error",
+    "no-prototype-builtins": "error",
+    "no-self-compare": "error",
+    "import/no-cycle": "error",
+    "import/no-duplicates": "error",
+    "node/no-top-level-await": [
+      "error",
+      {
+        "ignoreBin": true
+      }
+    ],
+    "node/no-exports-assign": "error",
+    "node/no-path-concat": "error",
+    "oxc/bad-bitwise-operator": "error",
+    "typescript/array-type": "error",
+    "typescript/consistent-type-imports": "error",
+    "typescript/consistent-type-exports": "error",
+    "typescript/explicit-module-boundary-types": "error",
+    "typescript/ban-ts-comment": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-unsafe-function-type": "error",
+    "typescript/no-import-type-side-effects": "error",
+    "typescript/method-signature-style": "error",
+    "typescript/consistent-type-assertions": [
+      "error",
+      {
+        "assertionStyle": "as",
+        "objectLiteralTypeAssertions": "never",
+        "arrayLiteralTypeAssertions": "never"
+      }
+    ],
+    "typescript/restrict-template-expressions": [
+      "error",
+      {
+        "allowAny": false
+      }
+    ],
+    "typescript/only-throw-error": [
+      "error",
+      {
+        "allowThrowingAny": false,
+        "allowThrowingUnknown": false
+      }
+    ],
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/return-await": ["error", "in-try-catch"],
+    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/use-unknown-in-catch-callback-variable": "error",
+    "unicorn/no-abusive-eslint-disable": "error",
+    "unicorn/no-process-exit": "error",
+    "unicorn/custom-error-definition": "error",
+    "unicorn/prefer-node-protocol": "error"
+  }
+}

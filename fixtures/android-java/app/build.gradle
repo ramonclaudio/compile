@@ -1,0 +1,32 @@
+plugins {
+  id "com.android.application"
+}
+
+android {
+  namespace "dev.compile.fixture"
+  compileSdk 36
+
+  defaultConfig {
+    applicationId "dev.compile.fixture"
+    minSdk 24
+    targetSdk 36
+    versionCode 1
+    versionName "1.0"
+  }
+
+  buildTypes {
+    debugOptimized {
+      initWith debug
+      debuggable true
+    }
+  }
+
+  splits {
+    abi {
+      enable true
+      reset()
+      include "arm64-v8a", "x86_64"
+      universalApk true
+    }
+  }
+}

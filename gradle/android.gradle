@@ -1,0 +1,191 @@
+import groovy.json.JsonOutput
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.TaskAction
+
+abstract class CompileAndroidArtifactTask extends DefaultTask {
+  @Input
+  abstract Property<String> getOutputType()
+
+  @Optional
+  @InputDirectory
+  abstract DirectoryProperty getApkDirectory()
+
+  @Optional
+  @InputFile
+  abstract RegularFileProperty getBundleFile()
+
+  @Internal
+  abstract Property<Object> getArtifactsLoader()
+
+  @OutputFile
+  abstract RegularFileProperty getReportFile()
+
+  @TaskAction
+  void writeReport() {
+    def paths
+    if (outputType.get() == "apk") {
+      def directory = apkDirectory.get()
+      def artifacts = artifactsLoader.get().load(directory)
+      if (artifacts == null) {
+        throw new GradleException("Compile found no APK metadata in ${directory.asFile}.")
+      }
+      paths = artifacts.elements.collect { it.outputFile }
+    } else {
+      paths = [bundleFile.get().asFile.absolutePath]
+    }
+    reportFile.get().asFile.text = JsonOutput.toJson([paths: paths])
+  }
+}
+
+if (gradle.parent != null) return
+
+def requests = [
+  compileAndroidDevelopmentApk: [mode: "development", outputType: "apk"],
+  compileAndroidDevelopmentAab: [mode: "development", outputType: "aab"],
+  compileAndroidProductionApk: [mode: "production", outputType: "apk"],
+  compileAndroidProductionAab: [mode: "production", outputType: "aab"],
+  compileAndroidApk: [outputType: "apk"],
+  compileAndroidAab: [outputType: "aab"],
+]
+def taskName = gradle.startParameter.taskNames.find { requests.containsKey(it) }
+def request = requests[taskName]
+if (request == null) return
+
+if (request.mode != null && gradle.startParameter.configureOnDemand) {
+  throw new GradleException(
+    "Compile requires --no-configure-on-demand to infer Android application variants.",
+  )
+}
+
+def modulePath
+def variantName
+def applicationVariants = []
+def reportTask
+
+gradle.projectsLoaded {
+  if (request.mode == null) {
+    modulePath = gradle.rootProject.providers.environmentVariable("COMPILE_ANDROID_MODULE").orNull
+    variantName = gradle.rootProject.providers.environmentVariable("COMPILE_ANDROID_VARIANT").orNull
+    if (modulePath == null || variantName == null) {
+      throw new GradleException("Compile requires a module path and variant for a resolved Android build.")
+    }
+  }
+  reportTask = gradle.rootProject.tasks.register(
+    taskName,
+    CompileAndroidArtifactTask,
+  )
+}
+
+def configureReport = { selected ->
+  def variant = selected.variant
+  def lifecyclePrefix = request.outputType == "apk" ? "assemble" : "bundle"
+  def lifecycleName = lifecyclePrefix + variant.name.substring(0, 1).toUpperCase(Locale.ROOT) + variant.name.substring(1)
+  def lifecycleTask = "${selected.project.path == ":" ? "" : selected.project.path}:${lifecycleName}"
+  def artifactName = request.outputType == "apk" ? "APK" : "BUNDLE"
+  def artifactType = variant.class.classLoader
+    .loadClass("com.android.build.api.artifact.SingleArtifact\$${artifactName}")
+    .getField("INSTANCE")
+    .get(null)
+  def artifact = variant.artifacts.get(artifactType)
+
+  reportTask.configure { task ->
+    task.dependsOn(lifecycleTask)
+    task.outputType.set(request.outputType)
+    task.reportFile.set(
+      gradle.rootProject.layout.file(
+        gradle.rootProject.providers
+          .environmentVariable("COMPILE_ANDROID_REPORT")
+          .map { new File(it) },
+      ),
+    )
+    if (request.outputType == "apk") {
+      task.apkDirectory.set(artifact)
+      task.artifactsLoader.set(variant.artifacts.builtArtifactsLoader)
+    } else {
+      task.bundleFile.set(artifact)
+    }
+  }
+}
+
+gradle.beforeProject { project ->
+  if (request.mode == null && project.path != modulePath) return
+  project.pluginManager.withPlugin("com.android.application") {
+    def androidComponents = project.extensions.getByName("androidComponents")
+    def version = androidComponents.pluginVersion
+    def supported = version.major > 8 ||
+      (version.major == 8 && (version.minor > 3 ||
+        (version.minor == 3 && version.micro >= 1)))
+    if (!supported) {
+      throw new GradleException(
+        "Compile requires Android Gradle Plugin 8.3.1 or newer. Found ${version}.",
+      )
+    }
+    androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+      def candidate = [
+        path: "${project.path == ":" ? "" : project.path}:${variant.name}",
+        project: project,
+        variant: variant,
+      ]
+      applicationVariants.add(candidate)
+      if (request.mode == null && variant.name == variantName) configureReport(candidate)
+    }
+  }
+}
+
+gradle.projectsEvaluated {
+  if (applicationVariants.isEmpty()) {
+    throw new GradleException(
+      "Compile found no Android application variants. Apply com.android.application to one module.",
+    )
+  }
+
+  def conventionalName = request.mode == "development" ? "debug" : "release"
+  def selectedVariants = applicationVariants.findAll {
+    request.mode == null
+      ? it.project.path == modulePath && it.variant.name == variantName
+      : it.variant.name.equalsIgnoreCase(conventionalName)
+  }
+  if (selectedVariants.size() != 1) {
+    if (request.mode == null) {
+      throw new GradleException(
+        "Compile found no Android application variant ${variantName} in module ${modulePath}.",
+      )
+    }
+    if (selectedVariants.isEmpty()) {
+      def available = applicationVariants.collect { it.path }.join(", ")
+      throw new GradleException(
+        "Compile found no Android application variant named ${conventionalName}. Available variants: ${available}",
+      )
+    }
+    def names = selectedVariants.collect { it.path }.join(", ")
+    throw new GradleException(
+      "Compile found ${selectedVariants.size()} Android application variants named ${conventionalName}: ${names}",
+    )
+  }
+
+  if (request.mode != null) {
+    def selected = selectedVariants.first()
+    if (selected.project.plugins.hasPlugin("com.facebook.react")) {
+      def react = selected.project.extensions.getByName("react")
+      def isDevelopment = react.debuggableVariants.get().any {
+        it.equalsIgnoreCase(selected.variant.name)
+      }
+      def mode = isDevelopment ? "development" : "production"
+      if (mode != request.mode) {
+        throw new GradleException(
+          "Android variant '${selected.variant.name}' uses ${mode} according to react.debuggableVariants, but the requested mode is ${request.mode}.",
+        )
+      }
+    }
+    configureReport(selected)
+  }
+}

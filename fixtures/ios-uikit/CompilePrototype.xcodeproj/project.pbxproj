@@ -1,0 +1,161 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A20000000000000000000001 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* main.m */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000002 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		A20000000000000000000003 /* CompilePrototype.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CompilePrototype.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		A20000000000000000000005 = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000006 /* CompilePrototype */,
+				A20000000000000000000007 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A20000000000000000000006 /* CompilePrototype */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000002 /* main.m */,
+			);
+			path = CompilePrototype;
+			sourceTree = "<group>";
+		};
+		A20000000000000000000007 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000003 /* CompilePrototype.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A20000000000000000000010 /* CompilePrototype */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A20000000000000000000011 /* Build configuration list for PBXNativeTarget "CompilePrototype" */;
+			buildPhases = (
+				A20000000000000000000012 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CompilePrototype;
+			productName = CompilePrototype;
+			productReference = A20000000000000000000003 /* CompilePrototype.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A20000000000000000000014 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+			};
+			buildConfigurationList = A20000000000000000000015 /* Build configuration list for PBXProject "CompilePrototype" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A20000000000000000000005;
+			productRefGroup = A20000000000000000000007 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A20000000000000000000010 /* CompilePrototype */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A20000000000000000000012 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A20000000000000000000001 /* main.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A20000000000000000000020 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		A20000000000000000000021 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.prototype.compile;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		A20000000000000000000022 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Release;
+		};
+		A20000000000000000000023 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.prototype.compile;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A20000000000000000000011 /* Build configuration list for PBXNativeTarget "CompilePrototype" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A20000000000000000000021 /* Debug */,
+				A20000000000000000000023 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A20000000000000000000015 /* Build configuration list for PBXProject "CompilePrototype" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A20000000000000000000020 /* Debug */,
+				A20000000000000000000022 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A20000000000000000000014 /* Project object */;
+}

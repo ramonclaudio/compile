@@ -1,0 +1,15 @@
+<?xml version="1.0" ?>
+<Scheme version="1.3">
+  <BuildAction>
+    <BuildActionEntries>
+      <BuildActionEntry buildForRunning="YES" buildForArchiving="YES">
+        <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A20000000000000000000010" BuildableName="CompilePrototype.app" BlueprintName="CompilePrototype" ReferencedContainer="container:CompilePrototype.xcodeproj"/>
+      </BuildActionEntry>
+      <BuildActionEntry buildForRunning="YES" buildForArchiving="YES">
+        <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="C00000000000000000000008" BuildableName="Watch.app" BlueprintName="Watch" ReferencedContainer="container:CompilePrototype.xcodeproj"/>
+      </BuildActionEntry>
+    </BuildActionEntries>
+  </BuildAction>
+  <LaunchAction buildConfiguration="Debug"/>
+  <ArchiveAction buildConfiguration="Release"/>
+</Scheme>

@@ -1,0 +1,46 @@
+{
+  "name": "@ramonclaudio/compile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Compile native iOS and Android projects.",
+  "license": "MIT",
+  "bin": {
+    "compile": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "gradle",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "clean": "node -e \"for (const directory of ['dist', '.build', 'fixtures/android-java/.gradle', 'fixtures/android-java/build', 'fixtures/android-java/app/build', 'fixtures/android-java/out', 'fixtures/ios-uikit/build', 'fixtures/ios-uikit/out', 'fixtures/ios-watch/build', 'fixtures/ios-watch/out']) require('node:fs').rmSync(directory, { recursive: true, force: true })\"",
+    "build": "tsc -p tsconfig.build.json",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "lint": "oxlint src test",
+    "lint:fix": "npm run lint -- --fix",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run build --silent && node --experimental-strip-types --test --test-concurrency=1 test/*.test.ts",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "oxfmt": "0.67.0",
+    "oxlint": "1.82.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}
