@@ -380,6 +380,117 @@ androidComponents.beforeVariants(androidComponents.selector().all()) { variant -
         ),
       );
       await verifyArchives(paths);
+      const resolvedPaths = await buildAndroid({
+        wrapper: {
+          cwd: project,
+          path: process.platform === "win32" ? "gradlew.bat" : "gradlew",
+        },
+        modulePath: ":app",
+        variant: mode === "development" ? "DEBUG" : "release",
+        outputType: "apk",
+        gradleArgs: ["--configure-on-demand", "--console=plain"],
+      });
+      assert.deepEqual(resolvedPaths, paths);
+    }
+  },
+);
+
+void test(
+  "resolves Android variant casing without changing the selected lifecycle",
+  { skip: !hasAndroidSdk },
+  async (context) => {
+    const project = await mkdtemp(path.join(os.tmpdir(), "compile-android-resolved-case-"));
+    context.after(() => rm(project, { recursive: true, force: true }));
+    await copyFixture(fixture, project);
+    await addLifecycleReceipts(project, [
+      "assembleDebug",
+      "assembleRelease",
+      "bundleRelease",
+      "assembleDebugOptimized",
+    ]);
+    const wrapper = {
+      cwd: project,
+      path: process.platform === "win32" ? "gradlew.bat" : "gradlew",
+    };
+    for (const [variant, outputType, canonicalVariant, lifecycle] of [
+      ["DEBUG", "apk", "debug", "assembleDebug"],
+      ["Release", "apk", "release", "assembleRelease"],
+      ["RELEASE", "aab", "release", "bundleRelease"],
+      ["DEBUGOPTIMIZED", "apk", "debugOptimized", "assembleDebugOptimized"],
+    ] as const) {
+      const paths = await buildAndroid({
+        wrapper,
+        modulePath: ":app",
+        variant,
+        outputType,
+        gradleArgs: ["--configure-on-demand", "--console=plain"],
+      });
+      assert.equal(paths.length, outputType === "apk" ? 3 : 1);
+      assert.ok(
+        paths.every((artifact) => path.basename(path.dirname(artifact)) === canonicalVariant),
+      );
+      await verifyArchives(paths);
+      assert.equal(
+        await readFile(path.join(project, "app", "build", `${lifecycle}.txt`), "utf8"),
+        lifecycle,
+      );
+    }
+  },
+);
+
+void test(
+  "rejects Android variants that differ only by case before building",
+  { skip: !hasAndroidSdk },
+  async (context) => {
+    const project = await mkdtemp(path.join(os.tmpdir(), "compile-android-ambiguous-case-"));
+    context.after(() => rm(project, { recursive: true, force: true }));
+    await copyFixture(fixture, project);
+    await appendFile(
+      path.join(project, "app", "build.gradle"),
+      `
+android.buildTypes {
+  deBug { initWith debug }
+}
+`,
+    );
+    const lifecycleTasks = ["assembleDebug", "assembleDeBug"];
+    await addLifecycleReceipts(project, lifecycleTasks);
+    for (const [variant, diagnostic, candidates] of [
+      [
+        "debug",
+        "Compile found 2 Android application variants matching debug in module :app:",
+        [":app:debug", ":app:deBug"],
+      ],
+      ["DEBUG", "task 'assembleDEBUG' is ambiguous", ["'assembleDebug'", "'assembleDeBug'"]],
+    ] as const) {
+      await assert.rejects(
+        buildAndroid(
+          {
+            wrapper: {
+              cwd: project,
+              path: process.platform === "win32" ? "gradlew.bat" : "gradlew",
+            },
+            modulePath: ":app",
+            variant,
+            outputType: "apk",
+            gradleArgs: ["--configure-on-demand", "--console=plain"],
+          },
+          { outputMode: "quiet" },
+        ),
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          assert.ok(error.message.includes(diagnostic), error.message);
+          for (const candidate of candidates) {
+            assert.ok(error.message.includes(candidate), error.message);
+          }
+          return true;
+        },
+      );
+      for (const lifecycle of lifecycleTasks) {
+        await assert.rejects(readFile(path.join(project, "app", "build", `${lifecycle}.txt`)), {
+          code: "ENOENT",
+        });
+      }
     }
   },
 );

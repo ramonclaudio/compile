@@ -46,6 +46,17 @@ void test("prepares and consumes the packed library and CLI from an isolated pro
     "junction",
   );
   await assert.rejects(access(path.join(packageDirectory, "dist")), { code: "ENOENT" });
+  for (const name of [
+    ".env",
+    ".dev/private.txt",
+    ".vscode/settings.json",
+    "fixtures/private.txt",
+    "test/private.test.ts",
+  ]) {
+    const file = path.join(packageDirectory, name);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, "This private test file must not be packaged.");
+  }
   const env = {
     ...process.env,
     npm_config_cache: path.join(directory, "npm-cache"),
@@ -78,13 +89,48 @@ void test("prepares and consumes the packed library and CLI from an isolated pro
       "install",
       path.join(directory, tarball),
       "--offline",
-      "--ignore-scripts",
       "--no-audit",
       "--no-fund",
       "--package-lock=false",
     ],
     { cwd: consumer, env },
   );
+
+  await context.test("the package contains only built modules and native resources", async () => {
+    const installedPackage = path.join(consumer, "node_modules", "@ramonclaudio", "compile");
+    const files = (await readdir(installedPackage, { recursive: true, withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => path.relative(installedPackage, path.join(entry.parentPath, entry.name)));
+    const modules = (await readdir(path.join(packageDirectory, "src")))
+      .filter((name) => name.endsWith(".ts"))
+      .map((name) => path.basename(name, ".ts"));
+    const expectedFiles = [
+      "LICENSE",
+      "README.md",
+      "package.json",
+      path.join("gradle", "android.gradle"),
+      ...modules.flatMap((name) => [
+        path.join("dist", `${name}.js`),
+        path.join("dist", `${name}.d.ts`),
+      ]),
+    ];
+    assert.deepEqual(files.sort(), expectedFiles.sort());
+  });
+
+  await context.test("CommonJS can load the package before any ES module import", async () => {
+    const result = await runConsumer(
+      "imports.cjs",
+      `
+const assert = require("node:assert/strict");
+const api = require("@ramonclaudio/compile");
+for (const name of ["compileAndroid", "compileIos", "buildAndroid", "buildIos", "runProcess", "CompileError"]) {
+  assert.equal(typeof api[name], "function");
+}
+`,
+    );
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr, "");
+  });
 
   await context.test(
     "ESM and CommonJS share the API and error class without starting the CLI",
@@ -233,6 +279,7 @@ void [requests, outputs, error];
       const typeRoots = path.dirname(path.dirname(require.resolve("@types/node/package.json")));
       const compilerArgs = [
         compiler,
+        "--ignoreConfig",
         "--noEmit",
         "--strict",
         "--exactOptionalPropertyTypes",
