@@ -7,6 +7,7 @@ import {
   createOutputTemporaryDirectory,
   outputDirectoryError,
 } from "./artifacts.ts";
+import { runXcodeBuild } from "./ios-build-process.ts";
 import { exportIpa, readExportOptions } from "./ios-export.ts";
 import { createBuildEnvironment, runCheckedProcess } from "./process.ts";
 import type { NativeBuildOptions, RunProcessOptions } from "./process.ts";
@@ -69,7 +70,9 @@ export async function compileIos(
     outputDir:
       request.outputDir === undefined ? undefined : path.resolve(request.cwd, request.outputDir),
   };
-  const buildOptions = { ...options, env: createBuildEnvironment(request.mode, options.env) };
+  const env = createBuildEnvironment(request.mode, options.env);
+  if (!Object.hasOwn(env, "RCT_NO_LAUNCH_PACKAGER")) env.RCT_NO_LAUNCH_PACKAGER = "true";
+  const buildOptions = { ...options, env };
   const xcodeSource = await resolveIosSource(request.cwd);
   const exportOptions =
     request.outputType === "ipa"
@@ -138,12 +141,7 @@ async function executeIosBuild(
     options,
   );
   const appPaths = parseBuildAppPaths(xcodeOutput, request.configuration, cwd, request.platform);
-  await runXcode(
-    [...buildArgs, ...(request.clean ? ["clean"] : []), "build"],
-    cwd,
-    options.outputMode ?? "stderr",
-    options,
-  );
+  await runXcodeBuild([...buildArgs, ...(request.clean ? ["clean"] : []), "build"], cwd, options);
   await verifyAppPaths(appPaths);
   for (const appPath of appPaths) {
     await verifyAppExecutable(appPath, cwd, options);
@@ -431,7 +429,9 @@ function parseBuildAppPaths(
     addAppPath(targetSettings, configuration, cwd, expectedPlatform, appPaths);
   }
   if (appPaths.size === 0) {
-    throw new CompileError("The selected scheme has no .app product in Xcode's build settings.");
+    throw new CompileError(
+      "The selected scheme has no .app product for the requested platform in Xcode's build settings.",
+    );
   }
   return [...appPaths].sort((left, right) => left.localeCompare(right));
 }
