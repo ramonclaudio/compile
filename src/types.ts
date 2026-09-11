@@ -45,16 +45,22 @@ interface CompileErrorOptions {
   readonly exitCode?: number;
   readonly signal?: NodeJS.Signals;
   readonly cause?: unknown;
+  readonly logFilePath?: string | undefined;
 }
 
 export class CompileError extends Error {
   readonly exitCode: number;
   readonly signal: NodeJS.Signals | undefined;
+  readonly logFilePath: string | undefined;
 
-  constructor(message: string, { exitCode = 1, signal, cause }: CompileErrorOptions = {}) {
+  constructor(
+    message: string,
+    { exitCode = 1, signal, cause, logFilePath }: CompileErrorOptions = {},
+  ) {
     super(message, cause === undefined ? undefined : { cause });
     this.name = "CompileError";
     this.exitCode = exitCode;
     this.signal = signal;
+    this.logFilePath = logFilePath;
   }
 }

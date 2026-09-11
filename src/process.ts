@@ -3,22 +3,26 @@ import type { ChildProcessByStdio } from "node:child_process";
 import { addAbortListener } from "node:events";
 import type { Readable } from "node:stream";
 
+import { ProcessLog } from "./process-log.ts";
+import type { ProcessLogResult } from "./process-log.ts";
 import { CompileError } from "./types.ts";
 import type { BuildMode } from "./types.ts";
 
-export type ProcessResult =
-  | {
-      readonly status: "exited";
-      readonly exitCode: number;
-      readonly stdout: string;
-      readonly stderr: string;
-    }
-  | {
-      readonly status: "signaled";
-      readonly signal: NodeJS.Signals;
-      readonly stdout: string;
-      readonly stderr: string;
-    };
+export type ProcessResult = ProcessLogResult &
+  (
+    | {
+        readonly status: "exited";
+        readonly exitCode: number;
+        readonly stdout: string;
+        readonly stderr: string;
+      }
+    | {
+        readonly status: "signaled";
+        readonly signal: NodeJS.Signals;
+        readonly stdout: string;
+        readonly stderr: string;
+      }
+  );
 
 export type BuildOutputMode = "stderr" | "quiet";
 
@@ -71,25 +75,36 @@ export async function runProcess(
   if (options.signal?.aborted) {
     throw new CompileError("Process was cancelled before starting.", { signal: "SIGTERM" });
   }
-  const childProcess = spawn(command, args, {
-    cwd: options.cwd,
-    env: options.env,
-    shell: false,
-    detached: process.platform !== "win32",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  let outputLog = options.outputMode === "capture" ? undefined : new ProcessLog();
   const stdoutChunks: Buffer[] = [];
   const stderrChunks: Buffer[] = [];
   const streamedOutput: StreamedOutput | undefined =
     options.outputMode === "stderr" ? { lastByte: undefined } : undefined;
-  readOutput(childProcess.stdout, stdoutChunks, options.outputMode, streamedOutput);
-  readOutput(childProcess.stderr, stderrChunks, options.outputMode, streamedOutput);
   try {
-    return await waitForClose(childProcess, command, stdoutChunks, stderrChunks, options.signal);
+    const childProcess = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      shell: false,
+      detached: process.platform !== "win32",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    outputLog?.capture(childProcess.stdout, "stdout");
+    outputLog?.capture(childProcess.stderr, "stderr");
+    readOutput(childProcess.stdout, stdoutChunks, options.outputMode, streamedOutput, outputLog);
+    readOutput(childProcess.stderr, stderrChunks, options.outputMode, streamedOutput, outputLog);
+    const result = await waitForClose(
+      childProcess,
+      command,
+      stdoutChunks,
+      stderrChunks,
+      options.signal,
+    );
+    const logResult = await outputLog?.finish(result.status !== "exited" || result.exitCode !== 0);
+    outputLog = undefined;
+    return { ...result, ...logResult };
   } finally {
-    if (streamedOutput?.lastByte !== undefined && streamedOutput.lastByte !== 10) {
-      process.stderr.write("\n");
-    }
+    await outputLog?.finish(false);
+    finishStreamedOutput(streamedOutput);
   }
 }
 
@@ -104,25 +119,43 @@ export async function runCheckedProcess(
   if (processResult.status === "exited" && processResult.exitCode === 0) {
     return processResult.stdout;
   }
+  throw new CompileError(formatProcessFailure(processResult, options.outputMode, operation), {
+    ...(processResult.status === "signaled"
+      ? { signal: processResult.signal }
+      : { exitCode: processResult.exitCode }),
+    logFilePath: processResult.logFilePath,
+  });
+}
+
+function formatProcessFailure(
+  processResult: ProcessResult,
+  outputMode: RunProcessOptions["outputMode"],
+  operation: string,
+): string {
   const failure =
     processResult.status === "signaled"
       ? `${operation} stopped after receiving ${processResult.signal}`
       : `${operation} failed with exit code ${processResult.exitCode}`;
   let errorOutput = "";
-  if (options.outputMode === "quiet") {
+  if (outputMode === "quiet" || processResult.status === "exited") {
     errorOutput = [processResult.stdout.trim(), processResult.stderr.trim()]
       .filter(Boolean)
       .join("\n");
-  } else if (processResult.status === "exited") {
-    errorOutput = processResult.stderr.trim() || processResult.stdout.trim();
   }
-  const errorMessage = errorOutput.length > 0 ? `${failure}:\n${errorOutput}` : `${failure}.`;
-  throw new CompileError(
-    errorMessage,
-    processResult.status === "signaled"
-      ? { signal: processResult.signal }
-      : { exitCode: processResult.exitCode },
-  );
+  let errorMessage = errorOutput.length > 0 ? `${failure}:\n${errorOutput}` : `${failure}.`;
+  if (processResult.logFilePath !== undefined) {
+    errorMessage += `\nFull native output saved to ${processResult.logFilePath}`;
+  }
+  if (processResult.logError !== undefined) {
+    errorMessage += `\nCould not save full native output: ${processResult.logError}`;
+  }
+  return errorMessage;
+}
+
+function finishStreamedOutput(streamedOutput: StreamedOutput | undefined): void {
+  if (streamedOutput?.lastByte !== undefined && streamedOutput.lastByte !== 10) {
+    process.stderr.write("\n");
+  }
 }
 
 function readOutput(
@@ -130,6 +163,7 @@ function readOutput(
   outputChunks: Buffer[],
   outputMode: RunProcessOptions["outputMode"],
   streamedOutput: StreamedOutput | undefined,
+  outputLog: ProcessLog | undefined,
 ): void {
   if (outputMode === "capture") {
     stream.on("data", (chunk: Buffer) => outputChunks.push(chunk));
@@ -140,11 +174,12 @@ function readOutput(
     if (streamedOutput !== undefined && chunk.length > 0) {
       streamedOutput.lastByte = chunk[chunk.length - 1];
     }
-    appendOutputTail(outputChunks, chunk);
+    const truncated = appendOutputTail(outputChunks, chunk);
+    if (truncated && outputLog !== undefined) outputLog.truncated = true;
   });
 }
 
-function appendOutputTail(outputChunks: Buffer[], chunk: Buffer): void {
+function appendOutputTail(outputChunks: Buffer[], chunk: Buffer): boolean {
   const output = Buffer.concat([...outputChunks, chunk]);
   let start = Math.max(0, output.length - outputTailBytes);
   let lines = 0;
@@ -156,6 +191,7 @@ function appendOutputTail(outputChunks: Buffer[], chunk: Buffer): void {
   }
   while (start < output.length && (output.readUInt8(start) & 0xc0) === 0x80) start++;
   outputChunks.splice(0, outputChunks.length, Buffer.from(output.subarray(start)));
+  return start > 0;
 }
 
 async function waitForClose(
