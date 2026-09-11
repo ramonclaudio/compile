@@ -206,6 +206,7 @@ const options = {
     calls += 1;
     assert.equal(args[0], calls === 1 ? ":app:assembleFreeDebug" : "compileAndroidDevelopmentApk");
     assert.equal(options.env.COMPILE_TEST_VALUE, "caller");
+    assert.equal(options.env.COMPILE_ANDROID_EXPECTED_ARCHITECTURES, "arm64-v8a,x86_64");
     assert.equal(options.env.NODE_ENV, calls === 1 ? "test" : "development");
     const script = args[args.indexOf("--init-script") + 1];
     assert.equal(script, path.join(packageRoot, "gradle", "android.gradle"));
@@ -217,11 +218,11 @@ const options = {
 };
 const paths = await buildAndroid({
   wrapper: { cwd: process.cwd(), path: "gradlew" },
-  modulePath: ":app", variant: "freeDebug", outputType: "apk",
+  modulePath: ":app", variant: "freeDebug", outputType: "apk", expectedArchitectures: ["arm64-v8a", "x86_64"],
 }, options);
 assert.deepEqual(paths, [artifact]);
 assert.deepEqual(await compileAndroid({
-  platform: "android", cwd: process.cwd(), mode: "development", outputType: "apk", outputDir: undefined,
+  platform: "android", cwd: process.cwd(), mode: "development", outputType: "apk", outputDir: undefined, expectedArchitectures: ["arm64-v8a", "x86_64"],
 }, options), [artifact]);
 assert.equal(calls, 2);
 assert.equal(options.env.NODE_ENV, "test");
@@ -252,9 +253,9 @@ const platform: IosBuildPlatform = "iphonesimulator";
 const destination: IosDestination = { kind: "simulator" };
 const source: IosSource = { kind: "project", path: "App.xcodeproj" };
 const wrapper: GradleWrapper = { cwd: "/app", path: "gradlew" };
-const android: AndroidBuildRequest = { wrapper, modulePath: ":app", variant: "debug", outputType: androidOutput };
+const android: AndroidBuildRequest = { wrapper, modulePath: ":app", variant: "debug", outputType: androidOutput, expectedArchitectures: ["arm64-v8a"] };
 const ios: IosBuildRequest = { cwd: "/app", source, scheme: "App", configuration, platform, destination: "generic/platform=iOS Simulator" };
-const androidCompile: AndroidCompileRequest = { platform: "android", cwd: "/app", mode, outputType: androidOutput, outputDir: undefined };
+const androidCompile: AndroidCompileRequest = { platform: "android", cwd: "/app", mode, outputType: androidOutput, outputDir: undefined, expectedArchitectures: ["arm64-v8a"] };
 const iosCompile: IosCompileRequest = { platform: "ios", cwd: "/app", mode, outputType: iosOutput, outputDir: undefined, destination };
 const requests: readonly CompileRequest[] = [androidCompile, iosCompile];
 const runner: ProcessRunner = async (command, args, options: RunProcessOptions): Promise<ProcessResult> => runProcess(command, args, options);
