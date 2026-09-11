@@ -171,6 +171,34 @@ void test("CLI preserves a native failure's exit code and output", async (contex
   );
 });
 
+void test("CLI points to complete native failure output after later noise displaces the cause", async (context) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "compile-cli-long-failure-"));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  await writeGradleFixture(
+    directory,
+    [
+      'console.log("first stdout build error");',
+      'console.error("first stderr build error");',
+      'console.log("later stdout output\\n".repeat(100));',
+      'console.error("later stderr output\\n".repeat(100));',
+      "process.exitCode = 23;",
+    ].join("\n"),
+  );
+  const result = await runCli(["android", "--dev"], directory);
+  assert.equal(result.status, "exited");
+  assert.equal(result.exitCode, 23, result.stderr);
+  assert.equal(result.stdout, "");
+  assert.doesNotMatch(result.stderr, /first (?:stdout|stderr) build error/);
+  const logFilePath = /Full native output saved to (.+)\n$/.exec(result.stderr)?.[1];
+  assert.ok(logFilePath, result.stderr);
+  context.after(() => rm(path.dirname(logFilePath), { recursive: true, force: true }));
+  const log = await readFile(logFilePath, "utf8");
+  assert.ok(log.includes("first stdout build error\n"));
+  assert.ok(log.includes("first stderr build error\n"));
+  assert.equal(log.split("later stdout output\n").length - 1, 100);
+  assert.equal(log.split("later stderr output\n").length - 1, 100);
+});
+
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   void test(
     `CLI preserves native termination by ${signal}`,

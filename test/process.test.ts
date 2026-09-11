@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { getEventListeners } from "node:events";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -57,6 +57,24 @@ void test("includes the native exit code and captured diagnostic in an error", a
       "Native build",
     ),
     { exitCode: 23, message: "Native build failed with exit code 23." },
+  );
+});
+
+void test("preserves a captured stdout error when stderr also contains a warning", async () => {
+  await assert.rejects(
+    runCheckedProcess(
+      process.execPath,
+      [
+        "-e",
+        'process.stdout.write("missing source file\\n"); process.stderr.write("unrelated warning\\n"); process.exitCode = 65;',
+      ],
+      captureOptions,
+      "Native metadata",
+    ),
+    {
+      exitCode: 65,
+      message: "Native metadata failed with exit code 65:\nmissing source file\nunrelated warning",
+    },
   );
 });
 
@@ -239,7 +257,7 @@ for (const outputMode of ["stderr", "quiet"] as const) {
 }
 
 for (const outputMode of ["stderr", "quiet"] as const) {
-  void test(`bounds failure diagnostic lines in ${outputMode} mode`, async () => {
+  void test(`bounds failure diagnostic lines in ${outputMode} mode`, async (context) => {
     const lines =
       Array.from({ length: 100 }, (_, index) => `native line ${index}`).join("\n") + "\n";
     const childScript = `process.stderr.write(${JSON.stringify(lines)}); process.exitCode = 65`;
@@ -248,7 +266,7 @@ for (const outputMode of ["stderr", "quiet"] as const) {
       `import { runCheckedProcess } from ${JSON.stringify(processModuleUrl)};`,
       "try {",
       `await runCheckedProcess(process.execPath, ["-e", ${JSON.stringify(childScript)}], { cwd: process.cwd(), env: undefined, outputMode: ${JSON.stringify(outputMode)}, signal: undefined }, "Native build");`,
-      "} catch (error) { process.stdout.write(JSON.stringify({ message: error.message, exitCode: error.exitCode })); }",
+      "} catch (error) { process.stdout.write(JSON.stringify({ message: error.message, exitCode: error.exitCode, logFilePath: error.logFilePath })); }",
     ].join("\n");
     const result = await runProcess(
       process.execPath,
@@ -257,15 +275,19 @@ for (const outputMode of ["stderr", "quiet"] as const) {
     );
     assert.equal(result.status, "exited");
     assert.equal(result.stderr, outputMode === "stderr" ? lines : "");
-    assert.deepEqual(JSON.parse(result.stdout), {
+    const failure: unknown = JSON.parse(result.stdout);
+    assert.ok(isRecord(failure));
+    const logSuffix = await verifyFailureLog(context, failure, outputMode, lines);
+    assert.deepEqual(failure, {
       exitCode: 65,
-      message: `Native build failed with exit code 65:\n${lines.trimEnd().split("\n").slice(-30).join("\n")}`,
+      message: `Native build failed with exit code 65:\n${lines.trimEnd().split("\n").slice(-30).join("\n")}${logSuffix}`,
+      logFilePath: failure.logFilePath,
     });
   });
 }
 
 for (const outputMode of ["stderr", "quiet"] as const) {
-  void test(`bounds long UTF-8 diagnostics in ${outputMode} mode`, async () => {
+  void test(`bounds long UTF-8 diagnostics in ${outputMode} mode`, async (context) => {
     const output = "😀".repeat(10_000) + "final native diagnostic";
     const childScript =
       'process.stdout.write("😀".repeat(10_000) + "final native diagnostic"); process.exitCode = 23';
@@ -274,7 +296,7 @@ for (const outputMode of ["stderr", "quiet"] as const) {
       `import { runCheckedProcess } from ${JSON.stringify(processModuleUrl)};`,
       "try {",
       `await runCheckedProcess(process.execPath, ["-e", ${JSON.stringify(childScript)}], { cwd: process.cwd(), env: undefined, outputMode: ${JSON.stringify(outputMode)}, signal: undefined }, "Native build");`,
-      "} catch (error) { process.stdout.write(JSON.stringify({ message: error.message, exitCode: error.exitCode })); }",
+      "} catch (error) { process.stdout.write(JSON.stringify({ message: error.message, exitCode: error.exitCode, logFilePath: error.logFilePath })); }",
     ].join("\n");
     const result = await runProcess(
       process.execPath,
@@ -289,7 +311,8 @@ for (const outputMode of ["stderr", "quiet"] as const) {
     assert.ok(typeof failure.message === "string");
     const prefix = "Native build failed with exit code 23:\n";
     assert.ok(failure.message.startsWith(prefix));
-    const tail = failure.message.slice(prefix.length);
+    const logSuffix = await verifyFailureLog(context, failure, outputMode, output);
+    const tail = failure.message.slice(prefix.length, failure.message.length - logSuffix.length);
     assert.ok(Buffer.byteLength(tail) <= 16 * 1_024);
     assert.ok(tail.endsWith("final native diagnostic"));
     assert.ok(!tail.includes("\uFFFD"));
@@ -329,6 +352,185 @@ void test("terminates only unfinished streamed output across both native pipes",
     assert.deepEqual(JSON.parse(result.stdout), { status: "exited", exitCode: 0, stdout, stderr });
   }
 });
+
+void test("quiet failures preserve early diagnostics from both streams in a private complete log", async (context) => {
+  const stdout = "first stdout error\n" + "later stdout noise\n".repeat(100_000);
+  const stderr = "first stderr error\n" + "later stderr noise\n".repeat(100_000);
+  const result = await runProcess(
+    process.execPath,
+    [
+      "-e",
+      'process.stdout.write("first stdout error\\n" + "later stdout noise\\n".repeat(100_000)); process.stderr.write("first stderr error\\n" + "later stderr noise\\n".repeat(100_000)); process.exitCode = 65;',
+    ],
+    { ...captureOptions, outputMode: "quiet" },
+  );
+  assert.equal(result.status, "exited");
+  assert.equal(result.exitCode, 65);
+  assert.ok(result.logFilePath);
+  const logFilePath = result.logFilePath;
+  context.after(() => rm(path.dirname(logFilePath), { recursive: true, force: true }));
+  assert.ok(Buffer.byteLength(result.stdout) <= 16 * 1_024);
+  assert.ok(Buffer.byteLength(result.stderr) <= 16 * 1_024);
+  assert.doesNotMatch(result.stdout + result.stderr, /first (?:stdout|stderr) error/);
+  const log = await readFile(result.logFilePath, "utf8");
+  assert.equal(log, stdout + "\n" + stderr);
+  assert.ok(log.includes("first stdout error\n"));
+  assert.ok(log.includes("first stderr error\n"));
+  assert.equal(log.split("later stdout noise\n").length - 1, 100_000);
+  assert.equal(log.split("later stderr noise\n").length - 1, 100_000);
+  if (!isWindows) {
+    assert.equal((await stat(result.logFilePath)).mode & 0o777, 0o600);
+    assert.equal((await stat(path.dirname(result.logFilePath))).mode & 0o777, 0o700);
+  }
+});
+
+void test("keeps a diagnostic contiguous when stderr arrives between stdout chunks", async (context) => {
+  const result = await runProcess(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      [
+        'import { writeSync } from "node:fs";',
+        'import { setTimeout } from "node:timers/promises";',
+        'writeSync(1, "database is ");',
+        "await setTimeout(20);",
+        'writeSync(2, "unrelated warning\\n");',
+        "await setTimeout(20);",
+        'writeSync(1, "locked\\n" + "later output\\n".repeat(100));',
+        "process.exitCode = 65;",
+      ].join("\n"),
+    ],
+    { ...captureOptions, outputMode: "quiet" },
+  );
+  assert.equal(result.status, "exited");
+  assert.equal(result.exitCode, 65);
+  assert.ok(result.logFilePath);
+  const logFilePath = result.logFilePath;
+  context.after(() => rm(path.dirname(logFilePath), { recursive: true, force: true }));
+  assert.equal(
+    await readFile(logFilePath, "utf8"),
+    "database is locked\n" + "later output\n".repeat(100) + "\nunrelated warning\n",
+  );
+});
+
+for (const outcome of [
+  "success",
+  "short-failure",
+  "spawn-error",
+  "invalid-arguments",
+  "pre-aborted",
+] as const) {
+  void test(`cleans quiet output logs after ${outcome}`, async (context) => {
+    const directory = await temporaryDirectory(context);
+    const childCode =
+      outcome === "success"
+        ? 'process.stdout.write("long successful output\\n".repeat(100));'
+        : 'process.stderr.write("short failure"); process.exitCode = 17;';
+    const command = outcome === "spawn-error" ? "/compile-test/missing-command" : process.execPath;
+    const args = outcome === "invalid-arguments" ? ["\0"] : ["-e", childCode];
+    const script = [
+      `const options = { cwd: process.cwd(), env: undefined, outputMode: "quiet", signal: ${outcome === "pre-aborted" ? "AbortSignal.abort()" : "undefined"} };`,
+      `try { console.log(JSON.stringify(await runProcess(${JSON.stringify(command)}, ${JSON.stringify(args)}, options))); }`,
+      "catch (error) { console.log(JSON.stringify({ error: error.message, signal: error.signal, code: error.code ?? error.cause?.code })); }",
+    ].join("\n");
+    const result = await runLogProbe(directory, script);
+    assert.equal(result.logFilePath, undefined);
+    assert.deepEqual(await readdir(directory), []);
+    if (outcome === "success") assert.equal(result.exitCode, 0);
+    if (outcome === "short-failure") assert.equal(result.exitCode, 17);
+    if (outcome === "spawn-error") assert.equal(result.code, "ENOENT");
+    if (outcome === "invalid-arguments") assert.equal(result.code, "ERR_INVALID_ARG_VALUE");
+    if (outcome === "pre-aborted") assert.equal(result.signal, "SIGTERM");
+  });
+}
+
+void test("keeps a quiet failure's native status when its log directory cannot be created", async (context) => {
+  const root = await temporaryDirectory(context);
+  const blockedDirectory = path.join(root, "file-not-directory");
+  await writeFile(blockedDirectory, "occupied");
+  const child =
+    'process.stdout.write("original error\\n" + "later noise\\n".repeat(100)); process.exitCode = 29;';
+  const result = await runLogProbe(
+    blockedDirectory,
+    [
+      `try { await runCheckedProcess(process.execPath, ["-e", ${JSON.stringify(child)}], { cwd: process.cwd(), env: undefined, outputMode: "quiet", signal: undefined }, "Native build"); }`,
+      "catch (error) { console.log(JSON.stringify({ message: error.message, exitCode: error.exitCode, logFilePath: error.logFilePath })); }",
+    ].join("\n"),
+  );
+  assert.equal(result.exitCode, 29);
+  assert.equal(result.logFilePath, undefined);
+  assert.ok(typeof result.message === "string");
+  assert.match(result.message, /Native build failed with exit code 29/);
+  assert.match(result.message, /Could not save full native output:.*ENOTDIR/);
+  assert.equal(await readFile(blockedDirectory, "utf8"), "occupied");
+});
+
+void test("drains a native child and preserves its exit after a log write fails", async (context) => {
+  const directory = await temporaryDirectory(context);
+  const child =
+    'process.stdout.write("o".repeat(4 * 1024 * 1024)); process.stderr.write("e".repeat(4 * 1024 * 1024)); process.exitCode = 37;';
+  const script = [
+    'const { default: fs } = await import("node:fs");',
+    'const { syncBuiltinESMExports } = await import("node:module");',
+    "const originalCreateWriteStream = fs.createWriteStream;",
+    'fs.createWriteStream = (file, options) => originalCreateWriteStream(file, { ...options, fs: { ...fs, write(...args) { args.at(-1)(Object.assign(new Error("simulated disk full"), { code: "ENOSPC" })); }, writev(...args) { args.at(-1)(Object.assign(new Error("simulated disk full"), { code: "ENOSPC" })); } } });',
+    "syncBuiltinESMExports();",
+    `try { await runCheckedProcess(process.execPath, ["-e", ${JSON.stringify(child)}], { cwd: process.cwd(), env: undefined, outputMode: "quiet", signal: undefined }, "Native build"); }`,
+    "catch (error) { console.log(JSON.stringify({ message: error.message, exitCode: error.exitCode, logFilePath: error.logFilePath })); }",
+  ].join("\n");
+  const result = await withTimeout(
+    runLogProbe(directory, script),
+    "native output after log failure",
+  );
+  assert.equal(result.exitCode, 37);
+  assert.equal(result.logFilePath, undefined);
+  assert.ok(typeof result.message === "string");
+  assert.match(result.message, /Could not save full native output: simulated disk full/);
+  assert.deepEqual(await readdir(directory), []);
+});
+
+void test(
+  "retains full quiet output when an AbortSignal cancels a noisy native child",
+  { skip: isWindows },
+  async (context) => {
+    const directory = await temporaryDirectory(context);
+    const ready = path.join(directory, "ready");
+    const controller = new AbortController();
+    const script = [
+      'const fs = require("node:fs");',
+      'fs.writeSync(1, "early cancellation diagnostic\\n" + "later noise\\n".repeat(100));',
+      'process.on("SIGTERM", () => process.exit(0));',
+      `fs.writeFileSync(${JSON.stringify(ready)}, String(process.pid));`,
+      "setInterval(() => {}, 1000);",
+    ].join("\n");
+    const pending = runCheckedProcess(
+      process.execPath,
+      ["-e", script],
+      { ...captureOptions, outputMode: "quiet", signal: controller.signal },
+      "Native build",
+    );
+    context.after(() => controller.abort());
+    await readReadyPid(ready);
+    controller.abort();
+    let failure: CompileError | undefined;
+    await assert.rejects(withTimeout(pending, "cancelled logged child"), (error: unknown) => {
+      assert.ok(error instanceof CompileError);
+      failure = error;
+      assert.equal(error.signal, "SIGTERM");
+      assert.ok(error.logFilePath);
+      return true;
+    });
+    assert.ok(failure?.logFilePath);
+    const logFilePath = failure.logFilePath;
+    context.after(() => rm(path.dirname(logFilePath), { recursive: true, force: true }));
+    assert.equal(
+      await readFile(logFilePath, "utf8"),
+      "early cancellation diagnostic\n" + "later noise\n".repeat(100),
+    );
+    assert.ok(failure.message.endsWith(`Full native output saved to ${logFilePath}`));
+  },
+);
 
 void test(
   "keeps cancellation when the child handles SIGTERM and exits with code 0",
@@ -551,6 +753,42 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
       await waitForProcessExit(descendantPid);
     },
   );
+}
+
+async function verifyFailureLog(
+  context: TestContext,
+  failure: Record<string, unknown>,
+  outputMode: "stderr" | "quiet",
+  expectedOutput: string,
+): Promise<string> {
+  const logFilePath = failure.logFilePath;
+  assert.ok(typeof logFilePath === "string", `Missing ${outputMode} failure log.`);
+  assert.equal(path.basename(logFilePath), "native.log");
+  assert.match(path.basename(path.dirname(logFilePath)), /^compile-output-/);
+  context.after(() => rm(path.dirname(logFilePath), { recursive: true, force: true }));
+  assert.equal(await readFile(logFilePath, "utf8"), expectedOutput);
+  return `\nFull native output saved to ${logFilePath}`;
+}
+
+async function runLogProbe(directory: string, script: string): Promise<Record<string, unknown>> {
+  const moduleUrl = new URL("../dist/process.js", import.meta.url).href;
+  const result = await runProcess(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { runProcess, runCheckedProcess } from ${JSON.stringify(moduleUrl)};\n${script}`,
+    ],
+    {
+      ...captureOptions,
+      env: { ...process.env, TMPDIR: directory, TMP: directory, TEMP: directory },
+    },
+  );
+  assert.equal(result.status, "exited");
+  assert.equal(result.exitCode, 0, result.stderr);
+  const parsed: unknown = JSON.parse(result.stdout);
+  assert.ok(isRecord(parsed));
+  return parsed;
 }
 
 async function temporaryDirectory(context: TestContext): Promise<string> {

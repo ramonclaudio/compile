@@ -6,48 +6,41 @@
 	objectVersion = 56;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		A20000000000000000000001 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* main.m */; };
-/* End PBXBuildFile section */
+		A20000000000000000000001 = {isa = PBXBuildFile; fileRef = A20000000000000000000002; };
 
-/* Begin PBXFileReference section */
-		A20000000000000000000002 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
-		A20000000000000000000003 /* CompilePrototype.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CompilePrototype.app; sourceTree = BUILT_PRODUCTS_DIR; };
-/* End PBXFileReference section */
+		A20000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		A20000000000000000000003 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CompilePrototype.app; sourceTree = BUILT_PRODUCTS_DIR; };
 
-/* Begin PBXGroup section */
 		A20000000000000000000005 = {
 			isa = PBXGroup;
 			children = (
-				A20000000000000000000006 /* CompilePrototype */,
-				A20000000000000000000007 /* Products */,
+				A20000000000000000000006,
+				A20000000000000000000007,
 			);
 			sourceTree = "<group>";
 		};
-		A20000000000000000000006 /* CompilePrototype */ = {
+		A20000000000000000000006 = {
 			isa = PBXGroup;
 			children = (
-				A20000000000000000000002 /* main.m */,
+				A20000000000000000000002,
 			);
 			path = CompilePrototype;
 			sourceTree = "<group>";
 		};
-		A20000000000000000000007 /* Products */ = {
+		A20000000000000000000007 = {
 			isa = PBXGroup;
 			children = (
-				A20000000000000000000003 /* CompilePrototype.app */,
+				A20000000000000000000003,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-/* End PBXGroup section */
 
-/* Begin PBXNativeTarget section */
-		A20000000000000000000010 /* CompilePrototype */ = {
+		A20000000000000000000010 = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A20000000000000000000011 /* Build configuration list for PBXNativeTarget "CompilePrototype" */;
+			buildConfigurationList = A20000000000000000000011;
 			buildPhases = (
-				A20000000000000000000012 /* Sources */,
+				A20000000000000000000012,
 			);
 			buildRules = (
 			);
@@ -55,17 +48,15 @@
 			);
 			name = CompilePrototype;
 			productName = CompilePrototype;
-			productReference = A20000000000000000000003 /* CompilePrototype.app */;
+			productReference = A20000000000000000000003;
 			productType = "com.apple.product-type.application";
 		};
-/* End PBXNativeTarget section */
 
-/* Begin PBXProject section */
-		A20000000000000000000014 /* Project object */ = {
+		A20000000000000000000014 = {
 			isa = PBXProject;
 			attributes = {
 			};
-			buildConfigurationList = A20000000000000000000015 /* Build configuration list for PBXProject "CompilePrototype" */;
+			buildConfigurationList = A20000000000000000000015;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -74,28 +65,24 @@
 				Base,
 			);
 			mainGroup = A20000000000000000000005;
-			productRefGroup = A20000000000000000000007 /* Products */;
+			productRefGroup = A20000000000000000000007;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A20000000000000000000010 /* CompilePrototype */,
+				A20000000000000000000010,
 			);
 		};
-/* End PBXProject section */
 
-/* Begin PBXSourcesBuildPhase section */
-		A20000000000000000000012 /* Sources */ = {
+		A20000000000000000000012 = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A20000000000000000000001 /* main.m in Sources */,
+				A20000000000000000000001,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXSourcesBuildPhase section */
 
-/* Begin XCBuildConfiguration section */
-		A20000000000000000000020 /* Debug */ = {
+		A20000000000000000000020 = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
@@ -104,7 +91,7 @@
 			};
 			name = Debug;
 		};
-		A20000000000000000000021 /* Debug */ = {
+		A20000000000000000000021 = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGNING_ALLOWED = NO;
@@ -115,7 +102,7 @@
 			};
 			name = Debug;
 		};
-		A20000000000000000000022 /* Release */ = {
+		A20000000000000000000022 = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
@@ -123,7 +110,7 @@
 			};
 			name = Release;
 		};
-		A20000000000000000000023 /* Release */ = {
+		A20000000000000000000023 = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGNING_ALLOWED = NO;
@@ -134,28 +121,26 @@
 			};
 			name = Release;
 		};
-/* End XCBuildConfiguration section */
 
-/* Begin XCConfigurationList section */
-		A20000000000000000000011 /* Build configuration list for PBXNativeTarget "CompilePrototype" */ = {
+		A20000000000000000000011 = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A20000000000000000000021 /* Debug */,
-				A20000000000000000000023 /* Release */,
+				A20000000000000000000021,
+				A20000000000000000000023,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		A20000000000000000000015 /* Build configuration list for PBXProject "CompilePrototype" */ = {
+		A20000000000000000000015 = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A20000000000000000000020 /* Debug */,
-				A20000000000000000000022 /* Release */,
+				A20000000000000000000020,
+				A20000000000000000000022,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-/* End XCConfigurationList section */
+
 	};
-	rootObject = A20000000000000000000014 /* Project object */;
+	rootObject = A20000000000000000000014;
 }

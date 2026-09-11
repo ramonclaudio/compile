@@ -140,7 +140,8 @@ void test("resolved Xcode builds reject a different configuration or device plat
       "Release-Staging",
       /requested iphoneos, but Xcode selected iphonesimulator/,
     ],
-    ["appletvos", "Release-Staging", /no \.app product/],
+    ["appletvos", "Release-Staging", /no \.app product for the requested platform/],
+    ["macosx", "Release-Staging", /no \.app product for the requested platform/],
   ] as const) {
     let calls = 0;
     const runner: ProcessRunner = async (_command, _args, options) => {
@@ -241,7 +242,7 @@ void test(
   },
 );
 
-function settings(appPath: string, platform: IosBuildPlatform, configuration: string) {
+function settings(appPath: string, platform: IosBuildPlatform | "macosx", configuration: string) {
   return {
     buildSettings: {
       WRAPPER_NAME: path.basename(appPath),

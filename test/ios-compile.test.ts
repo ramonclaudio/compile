@@ -267,7 +267,11 @@ void test("app compilation carries caller options through discovery, build, insp
     calls.map((options) => options.outputMode),
     ["capture", "capture", "stderr", "capture", "capture"],
   );
-  assert.deepEqual(calls[0]?.env, { ...env, NODE_ENV: "development" });
+  assert.deepEqual(calls[0]?.env, {
+    ...env,
+    NODE_ENV: "development",
+    RCT_NO_LAUNCH_PACKAGER: "true",
+  });
   for (const options of calls) {
     assert.equal(options.cwd, cwd);
     assert.equal(options.env, calls[0]?.env);
@@ -289,6 +293,77 @@ void test("IPA validation forwards a cancelled process without starting Xcode", 
   );
   assert.deepEqual(await readdir(cwd), ["App.xcodeproj", "ExportOptions.plist"]);
 });
+
+for (const outputType of ["app", "ipa"] as const) {
+  void test(`${outputType} compilation defaults packager suppression and preserves explicit values`, async (context) => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "compile-packager-env-"));
+    context.after(() => rm(cwd, { force: true, recursive: true }));
+    await mkdir(path.join(cwd, "App.xcodeproj"));
+    await writeFile(path.join(cwd, "ExportOptions.plist"), localExportOptions);
+    const appPath = path.join(cwd, "App.app");
+    const cases: readonly {
+      env: NodeJS.ProcessEnv;
+      expected: string | undefined;
+    }[] = [
+      { env: {}, expected: "true" },
+      { env: { RCT_NO_LAUNCH_PACKAGER: "1" }, expected: "1" },
+      { env: { RCT_NO_LAUNCH_PACKAGER: "" }, expected: "" },
+      { env: { RCT_NO_LAUNCH_PACKAGER: "false" }, expected: "false" },
+      { env: { RCT_NO_LAUNCH_PACKAGER: undefined }, expected: undefined },
+    ];
+    for (const { env, expected } of cases) {
+      Object.freeze(env);
+      const calls: RunProcessOptions[] = [];
+      const runner: ProcessRunner = async (command, args, options) => {
+        calls.push(options);
+        if (command === "/usr/bin/plutil") {
+          return succeeded(
+            args.includes("-convert")
+              ? JSON.stringify({ method: "debugging", destination: "export" })
+              : "App\n",
+          );
+        }
+        if (args.includes("-list")) {
+          return succeeded(JSON.stringify({ project: { schemes: ["App"] } }));
+        }
+        if (args.includes("-showBuildSettings")) {
+          return succeeded(buildSettings(appPath, "Release", "iphoneos"));
+        }
+        if (args.includes("-exportArchive")) {
+          const exportPath = argument(args, "-exportPath");
+          await mkdir(exportPath, { recursive: true });
+          await writeFile(path.join(exportPath, "App.ipa"), "exported IPA");
+        } else {
+          await mkdir(appPath, { recursive: true });
+          await writeFile(path.join(appPath, "App"), "native executable", { mode: 0o755 });
+        }
+        return succeeded("");
+      };
+      const paths = await compileIos(
+        {
+          platform: "ios",
+          cwd,
+          mode: "production",
+          outputType,
+          destination: { kind: "device" },
+          outputDir: undefined,
+        },
+        { env, runProcess: runner },
+      );
+      assert.equal(paths.length, 1);
+      assert.equal(calls.length, outputType === "app" ? 4 : 5);
+      for (const call of calls) {
+        assert.deepEqual(call.env, {
+          ...env,
+          NODE_ENV: "production",
+          RCT_NO_LAUNCH_PACKAGER: expected,
+        });
+        assert.equal(call.env, calls[0]?.env);
+      }
+      assert.equal(Object.hasOwn(env, "NODE_ENV"), false);
+    }
+  });
+}
 
 function ipaRequest(cwd: string): IosCompileRequest {
   return {

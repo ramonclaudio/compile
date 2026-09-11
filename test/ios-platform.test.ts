@@ -19,12 +19,13 @@ void test(
     context.after(() => rm(directory, { recursive: true, force: true }));
     await copyFixture(fixture, directory);
     const project = path.join(directory, "CompilePrototype.xcodeproj", "project.pbxproj");
+    const projectContents = await readFile(project, "utf8");
+    const releaseConfiguration =
+      /(A20000000000000000000023\s*=\s*\{[\s\S]*?CODE_SIGNING_ALLOWED = NO;)/;
+    assert.match(projectContents, releaseConfiguration);
     await writeFile(
       project,
-      (await readFile(project, "utf8")).replace(
-        /(A20000000000000000000023 \/\* Release \*\/ = \{[\s\S]*?CODE_SIGNING_ALLOWED = NO;)/,
-        "$1\n\t\t\t\tSUPPORTED_PLATFORMS = iphoneos;",
-      ),
+      projectContents.replace(releaseConfiguration, "$1\n\t\t\t\tSUPPORTED_PLATFORMS = iphoneos;"),
     );
     const schemeDirectory = path.join(
       directory,

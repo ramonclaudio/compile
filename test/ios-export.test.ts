@@ -163,7 +163,7 @@ void test("iOS products can share a scheme with app targets for other platforms"
         kind: "device",
         id: "some-mac",
       }),
-    /no \.app product/,
+    /no \.app product for the requested platform/,
   );
 });
 
