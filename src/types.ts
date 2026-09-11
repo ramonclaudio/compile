@@ -36,6 +36,7 @@ export interface AndroidCompileRequest {
   readonly cwd: string;
   readonly mode: BuildMode;
   readonly outputType: AndroidOutputType;
+  readonly expectedArchitectures?: readonly string[];
   readonly outputDir: string | undefined;
 }
 

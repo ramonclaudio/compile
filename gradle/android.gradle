@@ -1,7 +1,10 @@
 import groovy.json.JsonOutput
+import java.nio.charset.Charset
+import java.util.zip.ZipFile
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
@@ -14,6 +17,9 @@ import org.gradle.api.tasks.TaskAction
 abstract class CompileAndroidArtifactTask extends DefaultTask {
   @Input
   abstract Property<String> getOutputType()
+
+  @Input
+  abstract ListProperty<String> getExpectedArchitectures()
 
   @Optional
   @InputDirectory
@@ -39,10 +45,39 @@ abstract class CompileAndroidArtifactTask extends DefaultTask {
         throw new GradleException("Compile found no APK metadata in ${directory.asFile}.")
       }
       paths = artifacts.elements.collect { it.outputFile }
+      if (!expectedArchitectures.get().isEmpty()) {
+        for (def artifactPath : paths) {
+          verifyApkArchitectures(artifactPath)
+        }
+      }
     } else {
       paths = [bundleFile.get().asFile.absolutePath]
     }
     reportFile.get().asFile.text = JsonOutput.toJson([paths: paths])
+  }
+
+  private void verifyApkArchitectures(String artifactPath) {
+    def architectures = new LinkedHashSet<String>()
+    try {
+      new ZipFile(new File(artifactPath), Charset.forName("CP437")).withCloseable { archive ->
+        archive.entries().each { entry ->
+          def name = entry.name
+          if (name.contains('\\') || name.startsWith("/") || (name =~ /^[A-Za-z]:/).find() || name.split("/").contains("..")) {
+            throw new IOException("Invalid ZIP entry name: ${name}")
+          }
+          def matcher = name =~ /^lib\/([^\/]+)\/[^\/]+\.so$/
+          if (matcher.matches()) architectures.add(matcher.group(1))
+        }
+      }
+    } catch (IOException error) {
+      throw new GradleException("Cannot inspect Android artifact \"${artifactPath}\": ${error.message}", error)
+    }
+    def expected = expectedArchitectures.get()
+    if (!architectures.isEmpty() && !expected.any { architectures.contains(it) }) {
+      throw new GradleException(
+        "Android artifact \"${artifactPath}\" contains native libraries for ${architectures.join(', ')}, but the requested architectures are ${expected.join(', ')}.",
+      )
+    }
   }
 }
 
@@ -100,6 +135,11 @@ def configureReport = { selected ->
   reportTask.configure { task ->
     task.dependsOn(lifecycleTask)
     task.outputType.set(request.outputType)
+    task.expectedArchitectures.set(
+      gradle.rootProject.providers.environmentVariable("COMPILE_ANDROID_EXPECTED_ARCHITECTURES")
+        .map { it.split(",").toList() }
+        .orElse([]),
+    )
     task.reportFile.set(
       gradle.rootProject.layout.file(
         gradle.rootProject.providers

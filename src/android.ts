@@ -43,6 +43,7 @@ export interface AndroidBuildRequest {
   readonly modulePath: string;
   readonly variant: string;
   readonly outputType: AndroidOutputType;
+  readonly expectedArchitectures?: readonly string[];
   readonly outputDir?: string;
   readonly gradleArgs?: readonly string[];
 }
@@ -64,6 +65,7 @@ export async function compileAndroid(
     [taskName, "--console=plain", "--no-configure-on-demand"],
     request.outputType,
     request.outputDir,
+    request.expectedArchitectures,
     { ...options, env: createBuildEnvironment(request.mode, options.env) },
   );
 }
@@ -86,6 +88,7 @@ export async function buildAndroid(
     ],
     request.outputType,
     request.outputDir === undefined ? undefined : path.resolve(wrapper.cwd, request.outputDir),
+    request.expectedArchitectures,
     {
       ...options,
       env: {
@@ -114,18 +117,46 @@ async function buildAndroidArtifacts(
   args: readonly string[],
   outputType: AndroidOutputType,
   outputDir: string | undefined,
+  expectedArchitectures: readonly string[] | undefined,
   options: NativeBuildOptions,
 ): Promise<readonly string[]> {
+  validateExpectedArchitectures(expectedArchitectures, outputType);
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "compile-android-"));
   const reportPath = path.join(temporaryDirectory, "artifacts.json");
 
   try {
-    await runGradle(wrapper, args, reportPath, options);
+    const env = { ...(options.env ?? process.env) };
+    if (expectedArchitectures === undefined) {
+      delete env.COMPILE_ANDROID_EXPECTED_ARCHITECTURES;
+    } else {
+      env.COMPILE_ANDROID_EXPECTED_ARCHITECTURES = expectedArchitectures.join(",");
+    }
+    await runGradle(wrapper, args, reportPath, { ...options, env });
     const artifactPaths = await readArtifactPaths(reportPath, outputType);
     await verifyAndroidArtifactPaths(artifactPaths, outputType);
     return await copyAndroidArtifacts(artifactPaths, outputDir, outputType);
   } finally {
     await rm(temporaryDirectory, { force: true, recursive: true });
+  }
+}
+
+function validateExpectedArchitectures(
+  architectures: readonly string[] | undefined,
+  outputType: AndroidOutputType,
+): void {
+  if (architectures === undefined) return;
+  if (outputType !== "apk") {
+    throw new CompileError("Expected Android architectures can only be checked for APK output.");
+  }
+  if (
+    architectures.length === 0 ||
+    Array.from(architectures).some(
+      (architecture) => typeof architecture !== "string" || !/^[A-Za-z0-9_-]+$/.test(architecture),
+    )
+  ) {
+    throw new CompileError(
+      "Expected Android architectures must be a nonempty list of names containing only letters, numbers, underscores, or hyphens.",
+    );
   }
 }
 
